@@ -1,0 +1,64 @@
+version: "3.9"
+
+services:
+  postgres:
+    image: postgres:16
+    container_name: threatlog_postgres
+    environment:
+      POSTGRES_DB: threatlogs
+      POSTGRES_USER: app
+      POSTGRES_PASSWORD: app
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U app -d threatlogs || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    container_name: threatlog_api
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+psycopg2://app:app@postgres:5432/threatlogs
+    ports:
+      - "8000:8000"
+    volumes:
+      - .:/app
+    working_dir: /app
+    command: uvicorn app.api.main:app --host 0.0.0.0 --port 8000 --reload
+
+  dashboard:
+    build:
+      context: .
+      dockerfile: Dockerfile.dashboard
+    container_name: threatlog_dashboard
+    depends_on:
+      - api
+    ports:
+      - "8501:8501"
+    volumes:
+      - .:/app
+    working_dir: /app
+    command: streamlit run dashboard/app.py --server.port=8501 --server.address=0.0.0.0
+
+  adminer:
+    image: adminer:4
+    container_name: threatlog_adminer
+    depends_on:
+      - postgres
+    ports:
+      - "8080:8080"
+    environment:
+      - ADMINER_DEFAULT_SERVER=postgres
+
+volumes:
+  pgdata:
+
